@@ -10,9 +10,11 @@ const { width, height } = Dimensions.get('window');
 export default function CartScreen({ route, navigation }) {
   const [cartItems, setCartItems] = useState(route.params.cart);
   const [location, setLocation] = useState(null);
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [preciseLocation, setPreciseLocation] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -23,36 +25,67 @@ export default function CartScreen({ route, navigation }) {
       }
 
       let loc = await Location.getCurrentPositionAsync({});
-      setLocation({
+      const initialLocation = {
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
+      };
+
+      setLocation(initialLocation);
+      setSelectedLocation({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
       });
     })();
   }, []);
 
-  const incrementQuantity = (item) => {
-    const updatedCartItems = cartItems.map(cartItem =>
-      cartItem.id === item.id ? { ...cartItem, quantity: (cartItem.quantity || 1) + 1 } : cartItem
-    );
-    setCartItems(updatedCartItems);
+  const handleMapPress = (event) => {
+    const { latitude, longitude } = event.nativeEvent.coordinate;
+    setSelectedLocation({ latitude, longitude });
   };
 
-  const decrementQuantity = (item) => {
-    const updatedCartItems = cartItems.map(cartItem =>
-      cartItem.id === item.id && (cartItem.quantity || 1) > 1
-        ? { ...cartItem, quantity: cartItem.quantity - 1 }
-        : cartItem
-    );
-    setCartItems(updatedCartItems);
+  const handleRecenter = async () => {
+    let loc = await Location.getCurrentPositionAsync({});
+    const currentLocation = {
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+
+    setSelectedLocation({
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+    });
+
+    // Optional: Move map to current location
+    setLocation(currentLocation);
   };
 
-  const removeItem = (item) => {
-    const updatedCartItems = cartItems.filter(cartItem => cartItem.id !== item.id);
-    setCartItems(updatedCartItems);
-  };
-
+    // Increment quantity of an item in the cart
+    const incrementQuantity = (item) => {
+      const updatedCartItems = cartItems.map(cartItem =>
+        cartItem.id === item.id ? { ...cartItem, quantity: (cartItem.quantity || 1) + 1 } : cartItem
+      );
+      setCartItems(updatedCartItems);
+    };
+  
+    // Decrement quantity of an item in the cart
+    const decrementQuantity = (item) => {
+      const updatedCartItems = cartItems.map(cartItem =>
+        cartItem.id === item.id && (cartItem.quantity || 1) > 1
+          ? { ...cartItem, quantity: cartItem.quantity - 1 }
+          : cartItem
+      );
+      setCartItems(updatedCartItems);
+    };
+  
+    // Remove an item from the cart
+    const removeItem = (item) => {
+      const updatedCartItems = cartItems.filter(cartItem => cartItem.id !== item.id);
+      setCartItems(updatedCartItems);
+    };
   const getTotal = () => {
     return cartItems.reduce((total, item) => total + (item.price.replace('Kshs. ', '') * (item.quantity || 1)), 0);
   };
@@ -62,11 +95,20 @@ export default function CartScreen({ route, navigation }) {
   };
 
   const handleConfirmCheckout = () => {
-    console.log('Location:', location);
+    console.log('Selected Location:', selectedLocation);
     console.log('Precise Location:', preciseLocation);
     console.log('Phone Number:', phoneNumber);
     setModalVisible(false);
-    // Implement checkout logic here
+    // Navigate to the Payment Summary Screen
+    setPaymentModalVisible(true);
+  };
+
+  const initiateMpesaPayment = () => {
+    // Simulate M-Pesa Payment initiation
+    console.log('Initiating M-Pesa Payment...');
+    alert(`Payment of Kshs. ${getTotal()} initiated via M-Pesa for phone number ${phoneNumber}.`);
+    // Close payment modal after initiating payment
+    setPaymentModalVisible(false);
   };
 
   return (
@@ -115,10 +157,23 @@ export default function CartScreen({ route, navigation }) {
               <MapView
                 style={styles.map}
                 initialRegion={location}
+                // Allow user to select location
+                onPress={handleMapPress}
               >
-                <Marker coordinate={location} />
+                {selectedLocation && (
+                  <Marker
+                    // Marker updates based on user tap
+                    coordinate={selectedLocation} 
+                    draggable
+                    // Allow dragging of marker
+                    onDragEnd={(e) => setSelectedLocation(e.nativeEvent.coordinate)} 
+                  />
+                )}
               </MapView>
             )}
+            <TouchableOpacity style={styles.recenterButton} onPress={handleRecenter}>
+              <Text style={styles.recenterButtonText}>Recenter</Text>
+            </TouchableOpacity>
             <TextInput
               style={styles.input}
               placeholder="Add precise location"
@@ -134,6 +189,33 @@ export default function CartScreen({ route, navigation }) {
             />
             <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmCheckout}>
               <Text style={styles.confirmButtonText}>Confirm Checkout</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={paymentModalVisible}
+        onRequestClose={() => setPaymentModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.paymentModalContent}>
+            <Text style={styles.summaryText}>Checkout Summary</Text>
+            <FlatList
+              data={cartItems}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryItemText}>{item.name} x {item.quantity || 1}</Text>
+                  <Text style={styles.summaryItemText}>{item.price}</Text>
+                </View>
+              )}
+            />
+            <Text style={styles.summaryTotalText}>Total: Kshs. {getTotal()}</Text>
+            <TouchableOpacity style={styles.paymentButton} onPress={initiateMpesaPayment}>
+              <Text style={styles.paymentButtonText}>Pay with M-Pesa</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -257,6 +339,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  recenterButton: {
+    backgroundColor: '#007BFF',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  recenterButtonText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  paymentModalContent: {
+    width: width * 0.9,
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  summaryText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 10,
+  },
+  summaryItemText: {
+    fontSize: 16,
+  },
+  summaryTotalText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 20,
+  },
+  paymentButton: {
+    backgroundColor: '#25D366',
+    padding: 15,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  paymentButtonText: {
     color: '#fff',
     fontSize: 16,
   },
